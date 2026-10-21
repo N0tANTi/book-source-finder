@@ -297,8 +297,8 @@ def lexical_search(conn, query, book_id, section=''):
     qgrams = grams(q)
     exact, near = [], []
     for row in conn.execute('''SELECT u.*,b.title book_title,b.id book_id FROM units u JOIN documents d ON d.id=u.document_id
-        JOIN books b ON b.id=d.book_id WHERE d.book_id=? AND d.role='translation' AND (?='' OR u.section=?)
-        ORDER BY u.position''', (book_id, section, section)):
+        JOIN books b ON b.id=d.book_id WHERE (?='' OR d.book_id=?) AND d.role='translation' AND (?='' OR u.section=?)
+        ORDER BY b.title,u.position''', (book_id, book_id, section, section)):
         item = dict(row)
         item.update(chapter_title=item['location'], page_label=item['location'], kind='files', verified=0)
         if q in item['normalized']:
@@ -354,8 +354,13 @@ def file_detail(conn, unit_id, model, source_id=''):
         raise ValueError('原文位置不存在。')
     result.update(source_id=source['id'], candidates=candidates,
                   verified=bool(review and review['source_id'] == source['id']),
-                  candidate=bool(candidates or review or source_id),
+                  candidate=bool(candidates or review),
                   source_location=source['location'], translation_location=row['location'])
+    result['source_sections'] = [dict(r) for r in conn.execute('''SELECT u.id,u.section FROM units u
+        JOIN (SELECT section,MIN(position) first_position FROM units WHERE document_id=? GROUP BY section) s
+          ON s.section=u.section AND s.first_position=u.position
+        WHERE u.document_id=? ORDER BY u.position''', (source['document_id'], source['document_id']))]
+    result['source_section'] = source['section']
     result['translation_units'] = [dict(r) for r in conn.execute('SELECT id,text,location FROM units WHERE document_id=? AND section=? ORDER BY position', (row['document_id'], row['section']))]
     result['source_units'] = [dict(r) for r in conn.execute('SELECT id,text,location FROM units WHERE document_id=? AND section=? ORDER BY position', (source['document_id'], source['section']))]
     return result

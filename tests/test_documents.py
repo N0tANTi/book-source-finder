@@ -101,6 +101,20 @@ class DocumentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_file_book(self.conn,self.root,'same','a.epub',self.source,'b.epub',self.source)
 
+    def test_unindexed_source_navigation_does_not_claim_alignment(self):
+        book = add_file_book(self.conn, self.root, 'Two chapters', 'source.md',
+            b'# Start\n\nThe first chapter.\n\n# Ending\n\nThe final chapter.',
+            'translation.epub', self.translation)
+        target = lexical_search(self.conn, '雨落', book['id'])[0]
+        first = file_detail(self.conn, target['id'], MODEL)
+        self.assertEqual(len(first['source_sections']), 2)
+        last = file_detail(self.conn, target['id'], MODEL, first['source_sections'][1]['id'])
+        self.assertEqual(last['source_section'], 'Ending')
+        self.assertIn('final chapter', last['source_units'][0]['text'])
+        self.assertFalse(last['candidate'])
+        self.assertFalse(last['verified'])
+        self.assertEqual(last['translation_units'], first['translation_units'])
+
     def test_pdf_epub_pair_and_scanned_pdf(self):
         text = 'Rain falls across the quiet garden. The windows remain open.'
         book = add_file_book(self.conn,self.root,'PDF test','source.pdf',pdf(text),'译文.epub',self.translation)

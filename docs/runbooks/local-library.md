@@ -22,6 +22,8 @@ Prerequisites: Python 3.10+ and the installed package (`pip install -e .`, inclu
 3. Run `python -m source_finder serve`. The service listens only on loopback; use its printed URL. Stop foreground execution with Ctrl+C. `start.cmd` offers the Windows entry point.
 4. Check the library counts, search a known Chinese passage, verify print/PDF page numbers, then read both panes. Sample at least one page crossing and distinguish reviewed snippets from page-only locations.
 
+For file pairs, choose the translation chapter from the top selector and browse the original independently with its location selector. PDFs use windows of up to 12 document pages; blank/image-only pages have no extracted text. A manual original-location change without an index remains unaligned, with no confirmation claim. Text search across all books includes both full file imports and legacy selections. Importing a file pair does not create a model job or vectors; check its shelf status before starting an explicitly authorized indexing action.
+
 Same-version reimports preserve confirmations. Modified chapter source/translation or page-parsing configuration clears that chapter's confirmations. Removing a chapter from a spec removes it from the local index. Inspect the intended import scope and export confirmations first.
 
 ## Mapping snapshots and recovery

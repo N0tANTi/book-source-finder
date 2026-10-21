@@ -91,7 +91,11 @@ async function runSearch(event) {
     $('#result-count').textContent = data.results.length ? `${data.results.length === 20 ? '最多显示 ' : ''}${data.results.length} 处${data.results[0]?.match === 'semantic' ? '语义候选，需核对' : approximate ? '文字近似，需确认' : '文字匹配'}` : '没有找到';
     displayResults();
     if (data.results.length) await selectResult(data.results[0].id);
-    else $('#detail').replaceChildren(element('p', '没有找到这段译文。试试缩短到一句话、去掉注释，或选“全部书籍”。当前只搜索已导入的选译章节。', 'no-results'));
+    else {
+      const book = state.library.books.find(b => b.id === $('#book').value);
+      const scope = book ? `当前查找《${book.title}》${$('#chapter').value ? '的所选章节' : '的全部已导入译文'}。` : '当前查找书库中的全部已导入译文。';
+      $('#detail').replaceChildren(element('p', `没有找到这段译文。${scope}请确认书名，或缩短到一句话、几个词语后重试。`, 'no-results'));
+    }
   } catch (error) { if (version === state.searchVersion) showError(error); }
   finally {
     if (version === state.searchVersion) { $('#search-button').disabled = false; $('#search-button').textContent = '查找原文 ↗'; }
@@ -239,7 +243,24 @@ function sourcePage(page, current, selected) {
   else passage.textContent = page.text;
   wrapper.append(passage); return wrapper;
 }
-$('#book').addEventListener('change', () => { chapters(); activeBookId = $('#book').value; });
+$('#book').addEventListener('change', async () => {
+  const book = state.library.books.find(b => b.id === $('#book').value);
+  const query = $('#query').value;
+  try {
+    if (book) {
+      await openBook(book);
+      $('#query').value = query;
+    } else {
+      activeBookId = ''; chapters();
+      $('#search-title').textContent = '全部书籍';
+      $('#active-book-note').textContent = '查找书库中的全部已导入译文。';
+      $('#search-mode').value = 'text'; $('#search-mode').options[1].disabled = true;
+      $('#query-disclosure').hidden = true;
+      state.results = []; displayResults(); $('#detail').replaceChildren();
+    }
+    if (query.trim()) await runSearch();
+  } catch (error) { showError(error); }
+});
 $('#reader-layout').addEventListener('click', () => {
   const stacked = document.body.classList.toggle('stacked-readers');
   $('#reader-layout').textContent = stacked ? '改为左右' : '改为上下';

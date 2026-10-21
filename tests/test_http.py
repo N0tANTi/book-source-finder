@@ -1,4 +1,5 @@
 import functools
+from contextlib import closing
 import json
 import tempfile
 import threading
@@ -6,11 +7,12 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from urllib.parse import urlencode
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from source_finder.__main__ import Handler
-from source_finder.core import connect
+from source_finder.core import connect, import_book
 from source_finder.ai import AIService,Settings
 from test_documents import FakeProvider,epub,pdf
 
@@ -110,6 +112,28 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.client.open(request)
         self.assertEqual(error.exception.code,400)
+
+    def test_all_books_search_includes_files_and_prioritizes_exact_matches(self):
+        new = self.upload('original.epub', epub(['Rain in the garden.']),
+                          epub(['雨落在安静的花园里。'], '新章'))
+        root = Path(self.temp.name)
+        (root / 'source.txt').write_text('--- PDF page 1; printed page 1 ---\nRain outside.', encoding='utf-8')
+        (root / 'translation.md').write_text('<!-- 原书第1页 -->\n\n雨落在宁静的花园里。', encoding='utf-8')
+        with closing(connect(self.db)) as conn:
+            import_book(conn, {'id':'legacy', 'title':'旧书', 'language':'英文', 'chapters':[
+                {'id':'one', 'title':'旧章', 'source':'source.txt', 'translation':'translation.md'}]}, root)
+        def lookup(query, book=''):
+            with self.client.open(self.url + '/api/search?' + urlencode({'q':query, 'book':book})) as response:
+                return json.load(response)['results']
+        results = lookup('雨落在安静的花园里')
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['book_id'], new['id'])
+        self.assertEqual(results[0]['match'], 'exact')
+        self.assertEqual({r['book_id'] for r in lookup('花园里')}, {'legacy', new['id']})
+        self.assertEqual(lookup('雨落在安静的花园里', 'legacy')[0]['match'], 'similar')
+        with self.client.open(self.url + '/api/library') as response:
+            self.assertEqual(json.load(response)['books'][0]['id'], new['id'])
+        self.assertEqual(self.ai.provider.calls, 0)
 
 
 if __name__ == '__main__':

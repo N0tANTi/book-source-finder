@@ -116,7 +116,7 @@ function renderFileReader(data) {
     }); label.append(choices); panel.append(label);
   }
   const columns = element('div', undefined, 'columns');
-  const chinese = element('section'); chinese.append(heading('中文译文 · 连续阅读'), element('p', '点击中文片段，在右侧查看原文候选。两侧均可独立滚动。', 'explanation'));
+  const chinese = element('section'); chinese.append(heading('中文译文 · 连续阅读'), element('p', data.candidate ? '点击中文片段，在右侧查看原文候选。两侧均可独立滚动。' : '可查找、点击中文片段，并上下滚动查看上下文。两侧尚未自动对齐。', 'explanation'));
   const translated = element('div', undefined, 'reader-window chinese-reader'); translated.tabIndex = 0; translated.setAttribute('aria-label', '中文连续阅读窗');
   for (const unit of data.translation_units) {
     const block = element('button', undefined, `reader-block${unit.id === id ? ' selected' : ''}`); block.type = 'button';
@@ -128,6 +128,19 @@ function renderFileReader(data) {
   const selectedSource = data.source_units.find(u => u.id === data.source_id);
   original.append(heading('原文 · 连续阅读', '复制当前原文', () => copyText(selectedSource.text)),
     element('p', data.verified ? '当前对应关系已由你确认。' : data.candidate ? '高亮为模型检索的候选或你选择的片段，需结合上下文核对。' : '原文与译文已提取。尚未建立索引，当前原文位置不代表对应关系。', 'explanation'));
+  const sourceLocation = element('label', '原文位置', 'source-location-label');
+  const sourceSections = element('select'); sourceSections.setAttribute('aria-label', '选择原文位置');
+  for (const section of data.source_sections) {
+    const option = new Option(section.section.replace(/^\d+:/, ''), section.id);
+    option.selected = section.section === data.source_section; sourceSections.append(option);
+  }
+  sourceSections.addEventListener('change', async () => {
+    try {
+      const next = await api(`/api/file-detail?${new URLSearchParams({ id, source: sourceSections.value })}`);
+      renderFileReader(next);
+    } catch (error) { showError(error); }
+  });
+  sourceLocation.append(sourceSections); original.append(sourceLocation);
   const source = element('div', undefined, 'reader-window original-reader'); source.tabIndex = 0; source.setAttribute('aria-label', '原文连续阅读窗');
   for (const unit of data.source_units) {
     const block = element('div', undefined, `source-page${unit.id === data.source_id ? ' current' : ''}`);

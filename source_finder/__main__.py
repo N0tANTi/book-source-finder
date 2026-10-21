@@ -63,12 +63,17 @@ class Handler(BaseHTTPRequestHandler):
                         data = library(conn)
                         for book in data['books']:
                             book['kind'] = 'legacy'
-                        data['books'] += file_books(conn, MODEL)
+                        data['books'] = file_books(conn, MODEL) + data['books']
                         return self.send({**data, 'csrf_token': self.token, 'model': self.settings.status()})
                     if parsed.path == '/api/search':
                         if conn.execute('SELECT 1 FROM documents WHERE book_id=?', (arg('book'),)).fetchone():
                             return self.send({'results': lexical_search(conn, arg('q'), arg('book'), arg('chapter'))})
-                        return self.send({'results': search(conn, arg('q'), arg('book'), arg('chapter'))})
+                        results = search(conn, arg('q'), arg('book'), arg('chapter'))
+                        if not arg('book'):
+                            results += lexical_search(conn, arg('q'), '', arg('chapter'))
+                            exact = [r for r in results if r['match'] in ('exact', 'across')]
+                            results = exact or sorted(results, key=lambda r: -r['score'])
+                        return self.send({'results': results[:20]})
                     if parsed.path == '/api/detail':
                         return self.send(detail(conn, arg('id')))
                     if parsed.path == '/api/export':
