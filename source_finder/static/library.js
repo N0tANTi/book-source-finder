@@ -4,8 +4,9 @@ let indexBookId = '';
 let shelfPoll = null;
 
 function showShelf() {
-  document.body.classList.remove('reading-mode');
-  $('#expand-reader').textContent = '展开阅读';
+  ++state.searchVersion; ++state.detailVersion;
+  document.body.classList.remove('reading-mode', 'book-open');
+  $('#expand-reader').textContent = '专注阅读';
   $('#shelf').hidden = false;
   $('.search-section').hidden = true;
   $('#results-section').hidden = true;
@@ -60,22 +61,35 @@ function renderShelf() {
 }
 
 async function openBook(book) {
+  ++state.searchVersion;
+  const opening = ++state.detailVersion;
   activeBookId = book.id;
   $('#shelf').hidden = true; $('.search-section').hidden = false; $('#empty').hidden = true;
   document.body.classList.remove('reading-mode');
-  $('#expand-reader').textContent = '展开阅读';
+  document.body.classList.add('book-open');
+  $('#expand-reader').textContent = '专注阅读';
   $('#search-title').textContent = book.title;
   $('#active-book-note').textContent = book.kind === 'files'
-    ? book.index_ready ? '已建立语义索引，可查找原句、词语或描述大意。' : '可以阅读和查找中文；建立语义索引后可定位原文候选。'
-    : '已保存页码对应关系，可以查找并对照阅读。';
+    ? book.index_ready ? '智能搜索 · 语义查询使用 Cloudflare' : '尚未建立语义索引 · 可查找译文和分别阅读'
+    : '已保存页码对应关系';
   $('#book').value = book.id; chapters(); $('#chapter').value = '';
-  $('#query').value = ''; $('#search-mode').value = 'text'; $('#query-disclosure').hidden = true;
-  $('#search-mode').options[1].disabled = !book.index_ready;
+  $('#query').value = ''; $('#search-mode').value = 'auto';
+  updateSearchMode(book);
   $('#results-section').hidden = false; $('#error').hidden = true;
   $('#results-title').textContent = '对照阅读'; $('#result-count').textContent = '';
   state.results = []; displayResults();
+  $('#search-button').disabled = false; $('#search-button').textContent = '搜索';
+  $('#reader-options').open = false;
   const data = await api(`/api/open-book?${new URLSearchParams({ book: book.id })}`);
+  if (opening !== state.detailVersion || activeBookId !== book.id) return;
   await selectResult(data.id);
+}
+
+function updateSearchMode(book) {
+  $('#search-mode').querySelector('option[value="semantic"]').disabled = !book?.index_ready;
+  if (!book?.index_ready && $('#search-mode').value === 'semantic') $('#search-mode').value = 'auto';
+  $('#query-disclosure').hidden = $('#search-mode').value === 'text' || !book?.index_ready;
+  $('#query').placeholder = book?.index_ready ? '搜一句话、一个词，或描述大意' : '搜索中文原句或词语';
 }
 
 async function openSettings() {
@@ -95,6 +109,12 @@ function openIndex(book) {
 
 function dialogError(id, error) { $(id).textContent = error.message; $(id).hidden = false; }
 
+async function selectSource(id, source) {
+  const version = ++state.detailVersion;
+  const data = await api(`/api/file-detail?${new URLSearchParams({ id, source })}`);
+  if (version === state.detailVersion) renderFileReader(data);
+}
+
 function renderFileReader(data) {
   state.current = data;
   const id = data.id;
@@ -104,21 +124,41 @@ function renderFileReader(data) {
   header.append(element('span', data.book_title, 'quiet'), element('h2', data.translation_location),
     element('span', data.verified ? '对应已人工确认' : data.candidate ? '原文候选 · 待核对' : '双文本阅读 · 尚未匹配', data.verified ? 'badge' : 'badge page'));
   panel.append(header);
+  header.hidden = true;
+  let candidateLabel = null;
   if (data.candidates.length) {
     const label = element('label', '原文候选', 'candidate-label');
     const choices = element('select'); choices.setAttribute('aria-label', '选择原文候选');
     for (const candidate of data.candidates) choices.append(new Option(`${candidate.location} · ${candidate.text.slice(0, 48)}…`, candidate.id));
-    if (!data.candidates.some(c => c.id === data.source_id)) choices.append(new Option(data.source_location + ' · 已确认', data.source_id));
+    if (!data.candidates.some(c => c.id === data.source_id)) choices.append(new Option(data.source_location + (data.verified ? ' · 已确认' : ' · 手动位置'), data.source_id));
     choices.value = data.source_id;
     choices.addEventListener('change', async () => {
-      try { const next = await api(`/api/file-detail?${new URLSearchParams({ id, source: choices.value })}`); renderFileReader(next); }
+      try { await selectSource(id, choices.value); }
       catch (error) { showError(error); }
-    }); label.append(choices); panel.append(label);
+    }); label.append(choices); candidateLabel = label;
   }
   const columns = element('div', undefined, 'columns');
-  const chinese = element('section'); chinese.append(heading('中文译文 · 连续阅读'), element('p', data.candidate ? '点击中文片段，在右侧查看原文候选。两侧均可独立滚动。' : '可查找、点击中文片段，并上下滚动查看上下文。两侧尚未自动对齐。', 'explanation'));
+  const chinese = element('section'); chinese.append(heading('中文译文'), element('p', data.candidate ? '点击中文片段，在右侧查看原文候选。两侧均可独立滚动。' : '可查找、点击中文片段，并上下滚动查看上下文。两侧尚未自动对齐。', 'explanation'));
+  const book = state.library.books.find(b => b.id === data.book_id);
+  const translationSection = element('select'); translationSection.setAttribute('aria-label', '阅读章节');
+  for (const chapter of book.chapters) {
+    const option = new Option(chapter.title, chapter.id); option.selected = chapter.id === data.section; translationSection.append(option);
+  }
+  translationSection.addEventListener('change', async () => {
+    try {
+      $('#query').value = ''; $('#chapter').value = '';
+      state.results = []; displayResults();
+      const first = await api(`/api/open-book?${new URLSearchParams({ book: data.book_id, chapter: translationSection.value })}`);
+      await selectResult(first.id);
+    } catch (error) { showError(error); }
+  });
+  const chapterNavigation = element('label', undefined, 'translation-location');
+  chapterNavigation.append(translationSection); chinese.append(chapterNavigation);
   const translated = element('div', undefined, 'reader-window chinese-reader'); translated.tabIndex = 0; translated.setAttribute('aria-label', '中文连续阅读窗');
-  for (const unit of data.translation_units) {
+  for (const [position, unit] of data.translation_units.entries()) {
+    // Section titles already appear in navigation; retain all raw units in SQLite.
+    if (unit.text.trim() === data.translation_location.trim()) continue;
+    if (position === 0 && /^[\w.-]+\.xhtml$/i.test(unit.text.trim())) continue;
     const block = element('button', undefined, `reader-block${unit.id === id ? ' selected' : ''}`); block.type = 'button';
     block.append(element('span', unit.location, 'page-label'), highlight(unit.text, $('#query').value));
     block.addEventListener('click', () => { if (unit.id !== state.current.id) selectResult(unit.id).catch(showError); }); translated.append(block);
@@ -126,8 +166,11 @@ function renderFileReader(data) {
   chinese.append(translated);
   const original = element('section');
   const selectedSource = data.source_units.find(u => u.id === data.source_id);
-  original.append(heading('原文 · 连续阅读', '复制当前原文', () => copyText(selectedSource.text)),
+  original.append(heading(data.language === '原文' ? '原文' : `${data.language}原文`),
     element('p', data.verified ? '当前对应关系已由你确认。' : data.candidate ? '高亮为模型检索的候选或你选择的片段，需结合上下文核对。' : '原文与译文已提取。尚未建立索引，当前原文位置不代表对应关系。', 'explanation'));
+  const paneState = element('span', data.verified ? '已核对' : data.candidate ? '模型候选' : '尚未匹配', 'pane-state');
+  paneState.title = data.verified ? '对应关系已由你确认' : data.candidate ? '模型检索结果，需要结合上下文核对' : '当前原文位置不代表对应关系';
+  original.querySelector('.column-heading').append(paneState);
   const sourceLocation = element('label', '原文位置', 'source-location-label');
   const sourceSections = element('select'); sourceSections.setAttribute('aria-label', '选择原文位置');
   for (const section of data.source_sections) {
@@ -136,11 +179,12 @@ function renderFileReader(data) {
   }
   sourceSections.addEventListener('change', async () => {
     try {
-      const next = await api(`/api/file-detail?${new URLSearchParams({ id, source: sourceSections.value })}`);
-      renderFileReader(next);
+      await selectSource(id, sourceSections.value);
     } catch (error) { showError(error); }
   });
-  sourceLocation.append(sourceSections); original.append(sourceLocation);
+  sourceLocation.append(sourceSections);
+  if (candidateLabel) original.append(candidateLabel);
+  else original.append(sourceLocation);
   const source = element('div', undefined, 'reader-window original-reader'); source.tabIndex = 0; source.setAttribute('aria-label', '原文连续阅读窗');
   for (const unit of data.source_units) {
     const block = element('div', undefined, `source-page${unit.id === data.source_id ? ' current' : ''}`);
@@ -149,6 +193,12 @@ function renderFileReader(data) {
     block.append(element('span', unit.location, 'page-label'), p); source.append(block);
   }
   original.append(source); columns.append(chinese, original); panel.append(columns);
+  const browsing = element('details', undefined, 'source-browse'); browsing.append(element('summary', '更多'));
+  const browsingPanel = element('div', undefined, 'source-browse-panel');
+  if (candidateLabel) browsingPanel.append(sourceLocation);
+  const copy = element('button', '复制当前原文', 'small-button'); copy.type = 'button';
+  copy.addEventListener('click', () => copyText(selectedSource.text)); browsingPanel.append(copy);
+  browsing.append(browsingPanel); original.querySelector('.column-heading').append(browsing);
   if (data.candidate) {
     const actions = element('div', undefined, 'file-review-actions');
     const confirm = element('button', data.verified ? '取消人工确认' : '确认这两个片段对应', 'small-button'); confirm.type = 'button';
@@ -170,7 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#import-error').hidden = true; $('#import-status').textContent = ''; $('#import-dialog').showModal();
   });
   $('#shelf-filter').addEventListener('input', renderShelf);
-  $('#search-mode').addEventListener('change', () => { $('#query-disclosure').hidden = $('#search-mode').value !== 'semantic'; });
+  $('#search-mode').addEventListener('change', () => updateSearchMode(state.library.books.find(b => b.id === activeBookId)));
   $('#chapter').addEventListener('change', async () => {
     if (!activeBookId || $('#query').value.trim()) return;
     try {

@@ -6,6 +6,7 @@
   <title>对照书库 · 原文与译文一起读</title>
   <meta name="description" content="粘贴中文译文，查找对应原文、章节与页码。书籍保存在本机。">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/reader.css">
   <script src="/library.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
@@ -14,18 +15,25 @@
   <main>
     <section id="shelf" aria-labelledby="shelf-title"><div class="shelf-heading"><div><h1 id="shelf-title">我的书库</h1><p>把原文和译文放在一起，从任何一句话回到原文。</p><p id="library-status" class="quiet" role="status">正在读取书库…</p></div><label class="shelf-filter">查找书籍<input id="shelf-filter" type="search" placeholder="输入书名"></label></div><div id="model-banner" class="model-banner"></div><div id="book-grid" class="book-grid"></div><div id="shelf-empty" class="empty-library" hidden><h2>先放进第一本书</h2><p>准备一份原文和一份中文译文，支持 EPUB、PDF、Markdown 和 TXT。</p><button type="button" id="first-book-button">添加第一本书</button></div><p class="library-note">文件保存在本机。EPUB 自动读取章节；PDF 保留文档页码。扫描 PDF 需先 OCR。</p></section>
     <section class="search-section" aria-labelledby="search-title" hidden>
-      <div class="intro"><button type="button" id="back-to-shelf" class="small-button">← 返回书库</button><h1 id="search-title">对照阅读</h1><p id="active-book-note">选择一句中文，查找对应原文。</p></div>
-      <form id="search-form">
-        <div class="filters"><label>书籍<select id="book"><option value="">全部书籍</option></select></label><label>章节<select id="chapter"><option value="">全部章节</option></select></label></div>
+      <h1 id="search-title" class="sr-only">对照阅读</h1>
+      <button type="button" id="back-to-shelf" class="small-button">← 书库</button>
+      <label class="book-picker"><span class="sr-only">书籍</span><select id="book"><option value="">全部书籍</option></select></label>
+      <form id="search-form" role="search">
         <label for="query" class="sr-only">要查找的中文译文</label>
-        <textarea id="query" rows="4" maxlength="9000" placeholder="粘贴从译文中复制的原句，也可以输入几个关键词。" required></textarea>
-        <div class="form-bottom"><label class="search-mode-label">查找方式<select id="search-mode"><option value="text">原句 / 词语</option><option value="semantic">按意思查找（模型）</option></select></label><button type="submit" id="search-button">查找原文 <span aria-hidden="true">↗</span></button></div><p id="query-disclosure" class="quiet" hidden>按意思查询会将输入的文字发送到 Cloudflare。</p>
+        <input id="query" type="search" maxlength="6000" placeholder="搜一句话、一个词，或描述大意" required>
+        <button type="submit" id="search-button">搜索</button>
       </form>
+      <details id="reader-options"><summary>设置</summary><div class="reader-options-panel">
+        <label>章节<select id="chapter"><option value="">全部章节</option></select></label>
+        <label>查找方式<select id="search-mode"><option value="auto">自动：原句优先，语义补充</option><option value="text">仅查原句 / 词语</option><option value="semantic">按意思查找（模型）</option></select></label>
+        <p id="query-disclosure" class="quiet">语义搜索会将查询文字发送到 Cloudflare；原句命中和已建索引间的匹配在本机完成。</p>
+        <div class="reading-controls"><button type="button" id="reader-layout" class="small-button" aria-pressed="false">改为上下</button><button type="button" id="expand-reader" class="small-button" aria-expanded="false">专注阅读</button></div>
+      </div></details>
     </section>
     <section id="empty" class="empty-state" hidden><h2>在这本书里查找</h2><p>输入中文原句或词语；建立模型索引后，也可以描述大意。</p><div id="examples"></div></section>
     <section id="results-section" hidden aria-labelledby="results-title">
-      <div class="section-heading"><h2 id="results-title">查找结果</h2><div class="reading-controls"><span id="result-count" class="quiet" role="status"></span><button type="button" id="reader-layout" class="small-button" aria-pressed="false">改为上下</button><button type="button" id="expand-reader" class="small-button">展开阅读</button></div></div>
-      <div class="workspace"><nav id="results" aria-label="匹配段落"></nav><article id="detail" aria-live="polite"></article></div>
+      <div class="section-heading"><h2 id="results-title" class="sr-only">对照阅读</h2><p id="active-book-note" class="quiet"></p><details id="result-picker" hidden><summary><span id="result-count" class="quiet" role="status"></span><span aria-hidden="true"> ▾</span></summary><nav id="results" aria-label="匹配段落"></nav></details></div>
+      <div class="workspace"><article id="detail" aria-live="polite"></article></div>
     </section>
     <p id="error" class="error" role="alert" hidden></p>
     <footer><span>个人本地书库 · 模型候选需要结合上下文核对。</span><span>原文、译文与索引保存在本机</span></footer>

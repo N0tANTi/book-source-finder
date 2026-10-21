@@ -309,6 +309,8 @@ def lexical_search(conn, query, book_id, section=''):
             if score >= .4:
                 item.update(match='similar', score=score)
                 near.append(item)
+    # A substantive match provides more context than a repeated chapter heading.
+    exact.sort(key=lambda i: len(i['normalized']) < 60)
     return (exact or sorted(near, key=lambda i: -i['score']))[:20]
 
 
@@ -330,6 +332,12 @@ def ranked_units(conn, vector, model, book_id, role, section=''):
         item['score'] = round(cosine(vector, json.loads(item.pop('vector'))), 4)
         item.update(chapter_title=item['location'], page_label=item['location'], kind='files', verified=0, match='semantic')
         results.append(item)
+    # For descriptions, show substantive reading passages before short titles or
+    # glossary labels. Exact phrase/word search still includes every text unit.
+    if role == 'translation':
+        prose = [r for r in results if len(normalized(r['text'])) >= 60]
+        if prose:
+            results = prose
     return sorted(results, key=lambda i: -i['score'])[:5]
 
 

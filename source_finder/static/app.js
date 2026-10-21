@@ -41,7 +41,7 @@ async function loadLibrary() {
   renderShelf();
   if (activeBookId) {
     const active = books.find(b => b.id === activeBookId);
-    $('#search-mode').options[1].disabled = !active?.index_ready;
+    updateSearchMode(active);
   }
   $('#examples').replaceChildren();
   for (const example of state.library.examples) {
@@ -65,11 +65,13 @@ function highlight(text, query) {
 }
 function displayResults() {
   const nav = $('#results'); nav.replaceChildren();
+  $('#result-picker').hidden = !state.results.length;
+  $('#result-picker').open = false;
   for (const result of state.results) {
     const button = element('button', undefined, 'result');
     button.type = 'button'; button.dataset.id = result.id;
     button.append(element('div', result.book_title, 'book-name'), element('p', result.text.slice(0, 86) + (result.text.length > 86 ? '…' : ''), 'snippet'), element('div', result.kind === 'files' ? result.page_label : `第 ${result.page_label} 页 · ${result.verified ? '原文已核对' : '按页定位'}`, 'result-meta'));
-    button.addEventListener('click', () => selectResult(result.id).catch(showError));
+    button.addEventListener('click', () => { $('#result-picker').open = false; selectResult(result.id).catch(showError); });
     nav.append(button);
   }
 }
@@ -81,7 +83,9 @@ async function runSearch(event) {
   $('#search-button').disabled = true; $('#search-button').textContent = '正在查找…';
   try {
     const params = new URLSearchParams({ q: $('#query').value, book: $('#book').value, chapter: $('#chapter').value });
-    const data = $('#search-mode').value === 'semantic'
+    const book = state.library.books.find(b => b.id === $('#book').value);
+    const useModel = $('#search-mode').value === 'semantic' || ($('#search-mode').value === 'auto' && book?.index_ready);
+    const data = useModel
       ? await api('/api/semantic', { book_id: $('#book').value, chapter: $('#chapter').value, query: $('#query').value, consent: true })
       : await api(`/api/search?${params}`);
     if (version !== state.searchVersion) return;
@@ -92,13 +96,14 @@ async function runSearch(event) {
     displayResults();
     if (data.results.length) await selectResult(data.results[0].id);
     else {
+      $('#result-picker').hidden = false;
       const book = state.library.books.find(b => b.id === $('#book').value);
       const scope = book ? `当前查找《${book.title}》${$('#chapter').value ? '的所选章节' : '的全部已导入译文'}。` : '当前查找书库中的全部已导入译文。';
       $('#detail').replaceChildren(element('p', `没有找到这段译文。${scope}请确认书名，或缩短到一句话、几个词语后重试。`, 'no-results'));
     }
   } catch (error) { if (version === state.searchVersion) showError(error); }
   finally {
-    if (version === state.searchVersion) { $('#search-button').disabled = false; $('#search-button').textContent = '查找原文 ↗'; }
+    if (version === state.searchVersion) { $('#search-button').disabled = false; $('#search-button').textContent = '搜索'; }
   }
 }
 async function copyText(text) {
@@ -249,13 +254,13 @@ $('#book').addEventListener('change', async () => {
   try {
     if (book) {
       await openBook(book);
+      if ($('#book').value !== book.id || activeBookId !== book.id) return;
       $('#query').value = query;
     } else {
       activeBookId = ''; chapters();
       $('#search-title').textContent = '全部书籍';
       $('#active-book-note').textContent = '查找书库中的全部已导入译文。';
-      $('#search-mode').value = 'text'; $('#search-mode').options[1].disabled = true;
-      $('#query-disclosure').hidden = true;
+      $('#search-mode').value = 'auto'; updateSearchMode(null);
       state.results = []; displayResults(); $('#detail').replaceChildren();
     }
     if (query.trim()) await runSearch();
@@ -269,11 +274,12 @@ $('#reader-layout').addEventListener('click', () => {
 });
 $('#expand-reader').addEventListener('click', () => {
   const expanded = document.body.classList.toggle('reading-mode');
-  $('#expand-reader').textContent = expanded ? '返回查询' : '展开阅读';
+  $('#expand-reader').textContent = expanded ? '退出专注' : '专注阅读';
   $('#expand-reader').setAttribute('aria-expanded', String(expanded));
   positionReaders();
   window.scrollTo({ top: 0, behavior: 'instant' });
 });
 $('#search-form').addEventListener('submit', runSearch);
 $('#query').addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') $('#search-form').requestSubmit(); });
+window.addEventListener('resize', positionReaders);
 loadLibrary().catch(showError);

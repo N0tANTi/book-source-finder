@@ -159,6 +159,19 @@ class DocumentTests(unittest.TestCase):
         self.assertEqual(file_books(self.conn,MODEL)[0]['job']['status'],'paused')
         self.assertFalse(file_books(self.conn,MODEL)[0]['index_ready'])
 
+    def test_semantic_descriptions_prioritize_prose_over_short_labels(self):
+        prose = '雨落在安静的花园里，人们不必急着走近彼此，窗户仍然敞开。' * 4
+        book = add_file_book(self.conn, self.root, 'Reading book', 'source.epub', self.source,
+                             'translation.epub', epub(['花园：garden', prose], '花园'))
+        vector = [1,0,0,0,0,0,0,0]
+        rows = self.conn.execute('SELECT id FROM units WHERE document_id=?', (book['id'] + ':translation',)).fetchall()
+        with self.conn:
+            self.conn.executemany('INSERT INTO vectors VALUES(?,?,?)', [(r['id'], MODEL, json.dumps(vector)) for r in rows])
+        hits = ranked_units(self.conn, vector, MODEL, book['id'], 'translation')
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]['text'], prose)
+        self.assertTrue(lexical_search(self.conn, 'garden', book['id']))
+
     def test_confirm_rejects_different_books(self):
         first = self.add()
         second = add_file_book(self.conn,self.root,'second','s.txt',b'Other original words.','t.txt','其他书的译文。'.encode())

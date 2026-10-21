@@ -113,6 +113,18 @@ class HTTPTests(unittest.TestCase):
             self.client.open(request)
         self.assertEqual(error.exception.code,400)
 
+    def test_open_chapter_starts_with_prose_instead_of_title(self):
+        prose = '雨落在安静的花园里。窗户依然敞开，人们可以继续交谈。' * 4
+        book = self.upload('original.epub', epub(['Rain falls in the garden.']), epub([prose], '第一章'))
+        params = urlencode({'book':book['id'], 'chapter':'0:第一章'})
+        with self.client.open(self.url + '/api/open-book?' + params) as response:
+            first = json.load(response)['id']
+        with self.client.open(self.url + '/api/file-detail?' + urlencode({'id':first})) as response:
+            detail = json.load(response)
+        self.assertEqual(detail['text'], prose)
+        self.assertFalse(detail['candidate'])
+        self.assertEqual(self.ai.provider.calls, 0)
+
     def test_all_books_search_includes_files_and_prioritizes_exact_matches(self):
         new = self.upload('original.epub', epub(['Rain in the garden.']),
                           epub(['雨落在安静的花园里。'], '新章'))

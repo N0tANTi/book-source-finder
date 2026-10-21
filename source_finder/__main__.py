@@ -85,7 +85,8 @@ class Handler(BaseHTTPRequestHandler):
                     if parsed.path == '/api/open-book':
                         row = conn.execute('''SELECT u.id FROM units u JOIN documents d ON d.id=u.document_id
                             WHERE d.book_id=? AND d.role='translation' AND (?='' OR u.section=?)
-                            ORDER BY u.position LIMIT 1''', (arg('book'),arg('chapter'),arg('chapter'))).fetchone()
+                            ORDER BY CASE WHEN ?<>'' AND length(u.normalized)>=60 THEN 0 ELSE 1 END,
+                            u.position LIMIT 1''', (arg('book'),arg('chapter'),arg('chapter'),arg('chapter'))).fetchone()
                         if not row:
                             row = conn.execute('''SELECT p.id FROM paragraphs p JOIN chapters c ON c.id=p.chapter_id
                                 WHERE c.book_id=? AND (?='' OR c.id=?) ORDER BY c.position,p.position LIMIT 1''',
@@ -100,6 +101,7 @@ class Handler(BaseHTTPRequestHandler):
                      '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
                      '/library.js': ('library.js', 'text/javascript; charset=utf-8'),
                      '/style.css': ('style.css', 'text/css; charset=utf-8')}
+            files['/reader.css'] = ('reader.css', 'text/css; charset=utf-8')
             if parsed.path not in files:
                 return self.send({'error': 'Not found'}, 404)
             name, mime = files[parsed.path]
