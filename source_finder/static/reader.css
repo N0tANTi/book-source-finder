@@ -40,6 +40,7 @@ body.book-open { overflow: hidden; }
 .book-open .columns .explanation { display: none; }
 .book-open .reader-window { flex: 1; height: auto; min-height: 0; max-height: none; border: 0; border-radius: 0; background: transparent; padding: 8px 12px 12px 0; scrollbar-gutter: stable; }
 .book-open .reader-block { padding: 18px 20px; }
+.book-open .reader-block:not(.selected):hover { background: transparent; border-left-color: #b5c4b4; }
 .book-open .reader-block > .page-label { display: none; }
 .book-open .reader-block .passage { font-size: 18px; line-height: 2.05; }
 .book-open .source-passage { font-size: 19px; line-height: 1.9; }
