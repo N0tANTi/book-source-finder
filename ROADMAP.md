@@ -1,0 +1,7 @@
+# Roadmap
+
+- **P1 · More reliable paragraph alignment.** Use known page boundaries as constraints; test a multilingual aligner on a reviewed sample, including omissions, merged/split paragraphs and page crossings. Requires a selected model/runtime and review dataset. Accept when candidate mappings carry provenance/uncertainty and do not overwrite human confirmations.
+- **P1 · Additional book preparation.** Inventory one new book's original/translation, retain chapter/page or EPUB anchors, and import with a narrow adapter. Requires both files and reliable location metadata. Accept when copied Chinese from several chapters retrieves the correct original location without silently guessing missing pages.
+- **P2 · Reading controls.** Add previous/next chapter navigation, font size, and location persistence. Accept when moving chapters preserves correct book context and both readers remain usable at narrow widths.
+- **P2 · Semantic lookup.** Add optional local multilingual embeddings for paraphrased queries. Requires an evaluated model and bounded download/cache workflow. Accept when lexical exact matches keep priority and semantic results are labeled as candidates with measured quality.
+- **P2 · Original page images.** Show an original PDF page at the retained PDF page number while keeping the text reader available. Requires a local PDF integration. Accept when scanned pages, front matter and printed/PDF numbering differences are verified.

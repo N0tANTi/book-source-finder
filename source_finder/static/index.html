@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>原文查找 · 从译文回到原文</title>
+  <meta name="description" content="粘贴中文译文，查找对应原文、章节与页码。书籍保存在本机。">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a href="/" class="brand">原文查找<span>从译文回到原文</span></a><span class="local-note">书籍保存在本机</span></header>
+  <main>
+    <section class="search-section" aria-labelledby="search-title">
+      <div class="intro"><h1 id="search-title">读到这里，<br>原文怎么说？</h1><p>粘贴中文中的一句话或一段文字，找到它的原文出处。</p><p id="library-status" class="quiet" role="status">正在读取书库…</p></div>
+      <form id="search-form">
+        <div class="filters"><label>书籍<select id="book"><option value="">全部书籍</option></select></label><label>章节<select id="chapter"><option value="">全部章节</option></select></label></div>
+        <label for="query" class="sr-only">要查找的中文译文</label>
+        <textarea id="query" rows="4" maxlength="9000" placeholder="粘贴从译文中复制的原句，也可以输入几个关键词。" required></textarea>
+        <div class="form-bottom"><span class="quiet">支持原句、关键词和标点差异</span><button type="submit" id="search-button">查找原文 <span aria-hidden="true">↗</span></button></div>
+      </form>
+    </section>
+    <section id="empty" class="empty-state"><h2>从一句中文开始</h2><p>已核对的段落显示对应原文；其余段落先定位到原书页，可继续查看前后页。</p><div id="examples"></div><p class="quiet">当前按文字查找。只记得大意时，试试其中几个关键词。</p></section>
+    <section id="results-section" hidden aria-labelledby="results-title">
+      <div class="section-heading"><h2 id="results-title">查找结果</h2><div class="reading-controls"><span id="result-count" class="quiet" role="status"></span><button type="button" id="reader-layout" class="small-button" aria-pressed="false">改为上下</button><button type="button" id="expand-reader" class="small-button">展开阅读</button></div></div>
+      <div class="workspace"><nav id="results" aria-label="匹配段落"></nav><article id="detail" aria-live="polite"></article></div>
+    </section>
+    <p id="error" class="error" role="alert" hidden></p>
+    <footer><span>原文保留摘录中的措辞、断词与识别误差。引用前可按页码核对原书。</span><a href="/api/export" download="alignments.json">导出已确认的对应关系</a></footer>
+  </main>
+  <div id="toast" role="status" hidden></div>
+</body>
+</html>

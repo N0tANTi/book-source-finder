@@ -1,0 +1,20 @@
+# All book contents, mappings, paths, and runtime state stay local.
+data/
+local/
+*.sqlite*
+*.db
+*.pdf
+*.epub
+*.docx
+*.env
+.env*
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+*.log
+coverage/
+screenshots/
+build/
+dist/
+*.egg-info/
