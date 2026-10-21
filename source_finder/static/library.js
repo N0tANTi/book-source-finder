@@ -70,7 +70,7 @@ async function openBook(book) {
   $('#expand-reader').textContent = '专注阅读';
   $('#search-title').textContent = book.title;
   $('#active-book-note').textContent = book.kind === 'files'
-    ? book.index_ready ? '智能搜索 · 语义查询使用 Cloudflare' : '尚未建立语义索引 · 可查找译文和分别阅读'
+    ? book.index_ready ? '智能搜索与句段定位使用 Cloudflare · 定位结果缓存在本机' : '尚未建立语义索引 · 可查找译文和分别阅读'
     : '已保存页码对应关系';
   $('#book').value = book.id; chapters(); $('#chapter').value = '';
   $('#query').value = ''; $('#search-mode').value = 'auto';
@@ -116,6 +116,7 @@ async function selectSource(id, source) {
 }
 
 function renderFileReader(data) {
+  data.source_segments ||= [];
   state.current = data;
   const id = data.id;
   for (const button of document.querySelectorAll('.result')) button.classList.toggle('active', button.dataset.id === id);
@@ -129,8 +130,11 @@ function renderFileReader(data) {
   if (data.candidates.length) {
     const label = element('label', '原文候选', 'candidate-label');
     const choices = element('select'); choices.setAttribute('aria-label', '选择原文候选');
-    for (const candidate of data.candidates) choices.append(new Option(`${candidate.location} · ${candidate.text.slice(0, 48)}…`, candidate.id));
-    if (!data.candidates.some(c => c.id === data.source_id)) choices.append(new Option(data.source_location + (data.verified ? ' · 已确认' : ' · 手动位置'), data.source_id));
+    for (const candidate of data.candidates) {
+      const preview = candidate.id === data.source_id && data.source_segments.length ? data.source_quote : candidate.text;
+      choices.append(new Option(`${candidate.location} · ${preview.slice(0, 48)}…`, candidate.id));
+    }
+    if (!data.candidates.some(c => c.id === data.source_id)) choices.append(new Option(data.source_location + (data.verified ? ' · 已确认' : data.source_segments.length ? ' · 句段起点' : ' · 手动位置'), data.source_id));
     choices.value = data.source_id;
     choices.addEventListener('change', async () => {
       try { await selectSource(id, choices.value); }
@@ -168,8 +172,9 @@ function renderFileReader(data) {
   const selectedSource = data.source_units.find(u => u.id === data.source_id);
   original.append(heading(data.language === '原文' ? '原文' : `${data.language}原文`),
     element('p', data.verified ? '当前对应关系已由你确认。' : data.candidate ? '高亮为模型检索的候选或你选择的片段，需结合上下文核对。' : '原文与译文已提取。尚未建立索引，当前原文位置不代表对应关系。', 'explanation'));
-  const paneState = element('span', data.verified ? '已核对' : data.candidate ? '模型候选' : '尚未匹配', 'pane-state');
-  paneState.title = data.verified ? '对应关系已由你确认' : data.candidate ? '模型检索结果，需要结合上下文核对' : '当前原文位置不代表对应关系';
+  const paneState = element('span', data.verified ? '已核对' : data.source_segments.length ? '句段候选' : data.candidate ? '边界未确定' : '尚未匹配', 'pane-state');
+  paneState.id = 'alignment-state';
+  paneState.title = data.verified ? '对应关系已由你确认' : data.source_segments.length ? '自动定位的句段范围，仍需结合上下文核对' : '仅定位到候选区域，未确定边界，不高亮整块原文';
   original.querySelector('.column-heading').append(paneState);
   const sourceLocation = element('label', '原文位置', 'source-location-label');
   const sourceSections = element('select'); sourceSections.setAttribute('aria-label', '选择原文位置');
@@ -189,21 +194,41 @@ function renderFileReader(data) {
   for (const unit of data.source_units) {
     const block = element('div', undefined, `source-page${unit.id === data.source_id ? ' current' : ''}`);
     const p = element('p', undefined, 'passage source-passage');
-    if (unit.id === data.source_id && data.candidate) p.append(element('mark', unit.text)); else p.textContent = unit.text;
+    const spans = data.source_segments.filter(s => s.unit_id === unit.id);
+    if (spans.length) {
+      const characters = Array.from(unit.text); let cursor = 0;
+      for (const span of spans) {
+        p.append(document.createTextNode(characters.slice(cursor, span.start).join('')),
+          element('mark', characters.slice(span.start, span.end).join('')));
+        cursor = span.end;
+      }
+      p.append(document.createTextNode(characters.slice(cursor).join('')));
+    } else if (unit.id === data.source_id && data.verified && !data.source_segments.length) p.append(element('mark', unit.text));
+    else p.textContent = unit.text;
     block.append(element('span', unit.location, 'page-label'), p); source.append(block);
   }
   original.append(source); columns.append(chinese, original); panel.append(columns);
   const browsing = element('details', undefined, 'source-browse'); browsing.append(element('summary', '更多'));
   const browsingPanel = element('div', undefined, 'source-browse-panel');
   if (candidateLabel) browsingPanel.append(sourceLocation);
-  const copy = element('button', '复制当前原文', 'small-button'); copy.type = 'button';
-  copy.addEventListener('click', () => copyText(selectedSource.text)); browsingPanel.append(copy);
+  const copy = element('button', data.source_segments.length ? '复制对应句段' : '复制当前原文', 'small-button'); copy.type = 'button';
+  copy.addEventListener('click', () => copyText(data.source_quote || selectedSource.text)); browsingPanel.append(copy);
+  if (data.candidate && !data.verified) {
+    const retry = element('button', '重新定位句段', 'small-button'); retry.type = 'button';
+    retry.addEventListener('click', async () => {
+      const version = ++state.detailVersion; retry.disabled = true; paneState.textContent = '正在定位句段…';
+      try {
+        const next = await api('/api/refine', { translation_id:id, consent:true, refresh:true });
+        if (version === state.detailVersion) renderFileReader(next);
+      } catch (error) { if (version === state.detailVersion) { paneState.textContent = '边界未确定'; paneState.title = error.message; retry.disabled = false; } }
+    }); browsingPanel.append(retry);
+  }
   browsing.append(browsingPanel); original.querySelector('.column-heading').append(browsing);
-  if (data.candidate) {
+  if (data.source_segments.length || data.verified) {
     const actions = element('div', undefined, 'file-review-actions');
-    const confirm = element('button', data.verified ? '取消人工确认' : '确认这两个片段对应', 'small-button'); confirm.type = 'button';
+    const confirm = element('button', data.verified ? '取消人工确认' : '确认此段对应', 'small-button'); confirm.type = 'button';
     confirm.addEventListener('click', async () => {
-      try { await api('/api/confirm-file', { translation_id: id, source_id: data.source_id, cancel: data.verified });
+      try { await api('/api/confirm-file', { translation_id: id, source_id: data.source_id, cancel: data.verified, segments: data.source_segments });
         await selectResult(id); await loadLibrary(); toast(data.verified ? '已取消确认' : '对应关系已保存');
       } catch (error) { showError(error); }
     }); actions.append(confirm); panel.append(actions);

@@ -48,6 +48,8 @@ def init_schema(conn):
         hash TEXT NOT NULL,model TEXT NOT NULL,vector TEXT NOT NULL,
         PRIMARY KEY(hash,model));
     ''')
+    from .alignment import init_schema as init_alignment
+    init_alignment(conn)
 
 
 def normalized(text):
@@ -342,6 +344,7 @@ def ranked_units(conn, vector, model, book_id, role, section=''):
 
 
 def file_detail(conn, unit_id, model, source_id=''):
+    from .alignment import cached, validate_segments
     row = conn.execute('''SELECT u.*,b.title book_title,b.id book_id,b.language FROM units u
         JOIN documents d ON d.id=u.document_id JOIN books b ON b.id=d.book_id
         WHERE u.id=? AND d.role='translation' ''', (unit_id,)).fetchone()
@@ -350,11 +353,23 @@ def file_detail(conn, unit_id, model, source_id=''):
     result = dict(row)
     result['kind'] = 'files'
     review = conn.execute('SELECT source_id FROM file_reviews WHERE translation_id=?', (unit_id,)).fetchone()
+    refined = cached(conn, unit_id)
+    segments = []
+    reviewed_segments = conn.execute('SELECT segments FROM passage_reviews WHERE translation_id=?', (unit_id,)).fetchone()
+    if reviewed_segments and review:
+        try:
+            segments = validate_segments(conn, unit_id, json.loads(reviewed_segments[0]))
+        except (ValueError, TypeError):
+            segments = []
+    elif not review and refined:
+        segments = refined['segments']
     candidates = []
     vector = conn.execute('SELECT vector FROM vectors WHERE unit_id=? AND model=?', (unit_id, model)).fetchone()
     if vector:
         candidates = ranked_units(conn, json.loads(vector['vector']), model, row['book_id'], 'source')
-    chosen = source_id or (review['source_id'] if review else '') or (candidates[0]['id'] if candidates else '')
+    chosen = source_id or (review['source_id'] if review else '') or (segments[0]['unit_id'] if segments else '') or (candidates[0]['id'] if candidates else '')
+    if segments and chosen != segments[0]['unit_id']:
+        segments = []
     source = conn.execute('''SELECT u.* FROM units u JOIN documents d ON d.id=u.document_id
         WHERE d.book_id=? AND d.role='source' AND (?='' OR u.id=?) ORDER BY u.position LIMIT 1''',
         (row['book_id'], chosen, chosen)).fetchone()
@@ -364,6 +379,10 @@ def file_detail(conn, unit_id, model, source_id=''):
                   verified=bool(review and review['source_id'] == source['id']),
                   candidate=bool(candidates or review),
                   source_location=source['location'], translation_location=row['location'])
+    result['source_segments'] = segments
+    result['range_state'] = ('reviewed' if review and review['source_id'] == source['id'] else
+                             'candidate' if segments else refined['state'] if refined else 'pending')
+    result['needs_refinement'] = bool(vector and not review and not refined and len(row['normalized']) >= 20 and not source_id)
     result['source_sections'] = [dict(r) for r in conn.execute('''SELECT u.id,u.section FROM units u
         JOIN (SELECT section,MIN(position) first_position FROM units WHERE document_id=? GROUP BY section) s
           ON s.section=u.section AND s.first_position=u.position
@@ -371,10 +390,18 @@ def file_detail(conn, unit_id, model, source_id=''):
     result['source_section'] = source['section']
     result['translation_units'] = [dict(r) for r in conn.execute('SELECT id,text,location FROM units WHERE document_id=? AND section=? ORDER BY position', (row['document_id'], row['section']))]
     result['source_units'] = [dict(r) for r in conn.execute('SELECT id,text,location FROM units WHERE document_id=? AND section=? ORDER BY position', (source['document_id'], source['section']))]
+    if segments:
+        last = conn.execute('SELECT section FROM units WHERE id=?', (segments[-1]['unit_id'],)).fetchone()
+        result['source_units'] = [dict(r) for r in conn.execute('''SELECT id,text,location FROM units WHERE document_id=?
+            AND position BETWEEN (SELECT MIN(position) FROM units WHERE document_id=? AND section=?)
+              AND (SELECT MAX(position) FROM units WHERE document_id=? AND section=?) ORDER BY position''',
+            (source['document_id'],source['document_id'],source['section'],source['document_id'],last['section']))]
+    texts = {u['id']:u['text'] for u in result['source_units']}
+    result['source_quote'] = '\n'.join(texts[s['unit_id']][s['start']:s['end']] for s in segments)
     return result
 
 
-def confirm_pair(conn, translation_id, source_id, cancel=False):
+def confirm_pair(conn, translation_id, source_id, cancel=False, segments=None):
     rows = conn.execute('''SELECT u.id,d.book_id,d.role FROM units u JOIN documents d ON d.id=u.document_id
                            WHERE u.id IN (?,?)''', (translation_id, source_id)).fetchall()
     by_role = {r['role']: r for r in rows}
@@ -382,8 +409,16 @@ def confirm_pair(conn, translation_id, source_id, cancel=False):
             or by_role['source']['id'] != source_id or by_role['translation']['id'] != translation_id
             or by_role['source']['book_id'] != by_role['translation']['book_id']):
         raise ValueError('只能确认同一本书的原文与译文对应。')
+    if segments:
+        from .alignment import validate_segments
+        segments = validate_segments(conn, translation_id, segments)
+        if segments[0]['unit_id'] != source_id:
+            raise ValueError('确认的起始位置与句段范围不一致。')
     with conn:
         if cancel:
             conn.execute('DELETE FROM file_reviews WHERE translation_id=?', (translation_id,))
         else:
             conn.execute('INSERT INTO file_reviews VALUES(?,?) ON CONFLICT(translation_id) DO UPDATE SET source_id=excluded.source_id', (translation_id, source_id))
+            conn.execute('DELETE FROM passage_reviews WHERE translation_id=?', (translation_id,))
+            if segments:
+                conn.execute('INSERT INTO passage_reviews VALUES(?,?)', (translation_id, json.dumps(segments)))

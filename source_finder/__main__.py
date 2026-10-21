@@ -187,7 +187,12 @@ class Handler(BaseHTTPRequestHandler):
                     vector = self.ai.query(conn, data['query'])
                     return self.send({'results': ranked_units(conn, vector, MODEL, book_id, 'translation', data.get('chapter', ''))})
                 elif self.path == '/api/confirm-file':
-                    confirm_pair(conn, data['translation_id'], data['source_id'], data.get('cancel', False))
+                    confirm_pair(conn, data['translation_id'], data['source_id'], data.get('cancel', False), data.get('segments'))
+                elif self.path == '/api/refine':
+                    if not self.ai or data.get('consent') is not True:
+                        raise ValueError('句段定位会把当前译文及少量原文候选发送至 Cloudflare，请先确认。')
+                    self.ai.refine(conn, data['translation_id'], data.get('refresh') is True)
+                    return self.send(file_detail(conn, data['translation_id'], MODEL))
                 else:
                     return self.send({'error': 'Not found'}, 404)
                 self.send({'ok': True})

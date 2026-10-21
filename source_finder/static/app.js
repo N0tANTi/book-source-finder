@@ -125,7 +125,21 @@ async function selectResult(id) {
   const data = await api(`${id.startsWith('unit:') ? '/api/file-detail' : '/api/detail'}?${new URLSearchParams({ id })}`);
   if (version !== state.detailVersion) return;
   state.current = data;
-  if (data.kind === 'files') { renderFileReader(data); return; }
+  if (data.kind === 'files') {
+    renderFileReader(data);
+    if (data.needs_refinement && $('#search-mode').value !== 'text') {
+      const label = $('#alignment-state');
+      label.textContent = '正在定位句段…';
+      api('/api/refine', { translation_id: id, consent: true }).then(refined => {
+        if (version === state.detailVersion) renderFileReader(refined);
+      }).catch(error => {
+        if (version === state.detailVersion) {
+          label.textContent = '边界未确定'; label.title = error.message;
+        }
+      });
+    }
+    return;
+  }
   for (const button of document.querySelectorAll('.result')) {
     const active = button.dataset.id === id;
     button.classList.toggle('active', active); button.setAttribute('aria-current', active ? 'true' : 'false');

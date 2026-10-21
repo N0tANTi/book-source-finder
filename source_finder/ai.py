@@ -157,6 +157,7 @@ class AIService:
         self.settings = settings
         self.provider = provider or Cloudflare(settings)
         self.lock = threading.Lock()
+        self.alignment_lock = threading.Lock()
         self.running = set()
         from .core import connect
         conn = connect(self.db)
@@ -237,3 +238,25 @@ class AIService:
             # Query cache is disposable and bounded; no query text is retained here.
             conn.execute('DELETE FROM query_vectors WHERE rowid NOT IN (SELECT rowid FROM query_vectors ORDER BY rowid DESC LIMIT 500)')
         return vector
+
+    def refine(self, conn, translation_id, refresh=False):
+        from .alignment import cached, prepare, refine_windows, remember_failure
+        existing = cached(conn, translation_id)
+        if existing and not refresh:
+            return existing
+        # Serialize sentence indexing and check the cache again: neighboring clicks
+        # often share the same five-paragraph result.
+        if not self.alignment_lock.acquire(timeout=60):
+            raise ValueError('正在定位相邻段落，请稍后再试。')
+        try:
+            existing = cached(conn, translation_id)
+            if existing and not refresh:
+                return existing
+            context = prepare(conn, translation_id, MODEL)
+            try:
+                return refine_windows(conn, context, self.provider)
+            except ValueError:
+                remember_failure(conn, translation_id)
+                raise
+        finally:
+            self.alignment_lock.release()

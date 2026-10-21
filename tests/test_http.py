@@ -125,6 +125,29 @@ class HTTPTests(unittest.TestCase):
         self.assertFalse(detail['candidate'])
         self.assertEqual(self.ai.provider.calls, 0)
 
+    def test_passage_refinement_requires_consent_and_reuses_cached_ranges(self):
+        self.settings.save('0'*32,'synthetic-token-for-test')
+        translated='雨落在安静的花园里，窗户仍然敞开着，人们可以听见花园里的雨声。'
+        book=self.upload('original.epub',epub(['Rain falls across the quiet garden. The rain continues outside.']),epub([translated],'第一章'))
+        self.post('/api/index',{'book_id':book['id'],'consent':True})
+        for _ in range(100):
+            with self.client.open(self.url+'/api/library') as response:
+                if json.load(response)['books'][0]['index_ready']:
+                    break
+            time.sleep(.01)
+        with self.client.open(self.url+'/api/search?'+urlencode({'q':translated,'book':book['id']})) as response:
+            target=json.load(response)['results'][0]['id']
+        before=self.ai.provider.calls
+        with self.assertRaises(urllib.error.HTTPError):
+            self.post('/api/refine',{'translation_id':target,'consent':False})
+        self.assertEqual(self.ai.provider.calls,before)
+        detail=self.post('/api/refine',{'translation_id':target,'consent':True})
+        self.assertFalse(detail['verified'])
+        self.assertIn('source_segments',detail)
+        after=self.ai.provider.calls
+        self.post('/api/refine',{'translation_id':target,'consent':True})
+        self.assertEqual(self.ai.provider.calls,after)
+
     def test_all_books_search_includes_files_and_prioritizes_exact_matches(self):
         new = self.upload('original.epub', epub(['Rain in the garden.']),
                           epub(['雨落在安静的花园里。'], '新章'))

@@ -26,7 +26,7 @@
       <details id="reader-options"><summary>设置</summary><div class="reader-options-panel">
         <label>章节<select id="chapter"><option value="">全部章节</option></select></label>
         <label>查找方式<select id="search-mode"><option value="auto">自动：原句优先，语义补充</option><option value="text">仅查原句 / 词语</option><option value="semantic">按意思查找（模型）</option></select></label>
-        <p id="query-disclosure" class="quiet">语义搜索会将查询文字发送到 Cloudflare；原句命中和已建索引间的匹配在本机完成。</p>
+        <p id="query-disclosure" class="quiet">语义搜索会发送查询文字。首次定位段落边界时，会把当前及相邻译文、少量原文候选的句段发送到 Cloudflare 的多语言向量模型；结果缓存在本机。不能确定范围时不显示段落高亮。“仅查原句 / 词语”不会自动调用模型。</p>
         <div class="reading-controls"><button type="button" id="reader-layout" class="small-button" aria-pressed="false">改为上下</button><button type="button" id="expand-reader" class="small-button" aria-expanded="false">专注阅读</button></div>
       </div></details>
     </section>
