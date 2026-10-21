@@ -1,6 +1,18 @@
 # Local operation and recovery
 
-Prerequisites: Python 3.10+, UTF-8 original and translated files with explicit page markers; Node only for JS development checks. Run commands in this repository.
+Prerequisites: Python 3.10+ and the installed package (`pip install -e .`, including `pypdf`); Node only for JS development checks. GUI imports support EPUB/PDF/UTF-8 text with no manual page markers. Legacy CLI page imports still require explicit markers. Run commands in this repository.
+
+## File-library storage and model state
+
+- Original and translation copies: ignored `data/books/<book-id>/source.*` and `translation.*`. Keep indefinitely while the entry is used; no automatic book deletion or retention cleanup is installed. New books get unique directories, existing files are never overwritten. Exact pair hashes deduplicate reimports.
+- Extracted units, human pair confirmations, per-model vectors, progress and query-vector cache: `data/library.sqlite3`. Per-book model vectors are reusable derived data; query-vector cache is disposable and limited to the latest 500 entries. There is no on-server build or model-weight cache.
+- Upload limits: 80 MB per file, 200 MB expanded EPUB content, 3000 PDF pages and 30000 text units per document. Import checks local free space for a bounded projected peak and 10% headroom before retaining files. Text/EPUB extraction is local; no network OCR is performed.
+- Credentials: `data/cloudflare.protected.json` uses current-user Windows DPAPI; it cannot simply be decrypted under a different OS account. Other platforms keep UI-entered tokens only in the running process. Environment variables are also supported. Do not include the vault in logs, screenshots or public Git.
+- Indexing explicitly transmits the selected book's extracted original/translation to Cloudflare. One book at a time, 24 units per batch, 2 million input characters maximum per run. Completed vectors survive quota/network errors. On restart, jobs become paused; continue from the shelf. This bounds requests but is not a provider billing-limit setting.
+- Test the configured account with the constant-text connection test, then index one actual book and verify candidates against reviewed text. Existing synthetic tests do not establish real-account connectivity or model quality.
+- For a full new-format library backup, stop the service and preserve the database, `data/books/` and applicable import settings together in a user-selected secure destination. The legacy alignment JSON export does not include new-format book-pair confirmations. Copying only code or only vectors does not restore the books. Use the full SQLite database plus files for new-format recovery; reconfigure cloud credentials after restoring under another Windows account.
+- No off-host backup destination or recurring backup producer is configured. Do not delete QA libraries, books or existing backup sets to enforce a new retention default without explicit scope and recovery validation.
+- Diagnostic-only material is kept in ignored `data/qa/` (synthetic book database/files) and `screenshots/` (UI captures); default retention is 14 days, with no automatic deletion installed. Verify that a diagnostic directory contains only intended disposable material before removing it. These directories are not part of library recovery.
 
 ## Run and import
 

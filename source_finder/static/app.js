@@ -37,7 +37,12 @@ async function loadLibrary() {
   options($('#book'), books, '全部书籍'); chapters();
   const count = books.reduce((sum, b) => sum + b.paragraph_count, 0);
   const reviewed = books.reduce((sum, b) => sum + b.verified_count, 0);
-  $('#library-status').textContent = books.length ? `书库 ${books.length} 本 · ${count} 段中文 · ${reviewed} 段已核对原文` : '书库为空，请先按 README 导入一本书。';
+  $('#library-status').textContent = books.length ? `${books.length} 本书 · ${count} 个译文片段 · ${reviewed} 处已核对` : '书库还没有书籍';
+  renderShelf();
+  if (activeBookId) {
+    const active = books.find(b => b.id === activeBookId);
+    $('#search-mode').options[1].disabled = !active?.index_ready;
+  }
   $('#examples').replaceChildren();
   for (const example of state.library.examples) {
     const excerpt = example.text.slice(0, 48);
@@ -63,7 +68,7 @@ function displayResults() {
   for (const result of state.results) {
     const button = element('button', undefined, 'result');
     button.type = 'button'; button.dataset.id = result.id;
-    button.append(element('div', result.book_title, 'book-name'), element('p', result.text.slice(0, 86) + (result.text.length > 86 ? '…' : ''), 'snippet'), element('div', `第 ${result.page_label} 页 · ${result.verified ? '原文已核对' : '按页定位'}`, 'result-meta'));
+    button.append(element('div', result.book_title, 'book-name'), element('p', result.text.slice(0, 86) + (result.text.length > 86 ? '…' : ''), 'snippet'), element('div', result.kind === 'files' ? result.page_label : `第 ${result.page_label} 页 · ${result.verified ? '原文已核对' : '按页定位'}`, 'result-meta'));
     button.addEventListener('click', () => selectResult(result.id).catch(showError));
     nav.append(button);
   }
@@ -76,12 +81,14 @@ async function runSearch(event) {
   $('#search-button').disabled = true; $('#search-button').textContent = '正在查找…';
   try {
     const params = new URLSearchParams({ q: $('#query').value, book: $('#book').value, chapter: $('#chapter').value });
-    const data = await api(`/api/search?${params}`);
+    const data = $('#search-mode').value === 'semantic'
+      ? await api('/api/semantic', { book_id: $('#book').value, chapter: $('#chapter').value, query: $('#query').value, consent: true })
+      : await api(`/api/search?${params}`);
     if (version !== state.searchVersion) return;
     state.results = data.results;
     $('#empty').hidden = true; $('#results-section').hidden = false;
     const approximate = data.results[0]?.match === 'similar';
-    $('#result-count').textContent = data.results.length ? `${data.results.length === 20 ? '最多显示 ' : ''}${data.results.length} 处${approximate ? '文字近似，需确认' : '文字匹配'}` : '没有找到';
+    $('#result-count').textContent = data.results.length ? `${data.results.length === 20 ? '最多显示 ' : ''}${data.results.length} 处${data.results[0]?.match === 'semantic' ? '语义候选，需核对' : approximate ? '文字近似，需确认' : '文字匹配'}` : '没有找到';
     displayResults();
     if (data.results.length) await selectResult(data.results[0].id);
     else $('#detail').replaceChildren(element('p', '没有找到这段译文。试试缩短到一句话、去掉注释，或选“全部书籍”。当前只搜索已导入的选译章节。', 'no-results'));
@@ -106,9 +113,10 @@ function heading(text, action, callback) {
 async function selectResult(id) {
   const version = ++state.detailVersion;
   $('#detail').replaceChildren(element('p', '正在读取原文…', 'quiet'));
-  const data = await api(`/api/detail?${new URLSearchParams({ id })}`);
+  const data = await api(`${id.startsWith('unit:') ? '/api/file-detail' : '/api/detail'}?${new URLSearchParams({ id })}`);
   if (version !== state.detailVersion) return;
   state.current = data;
+  if (data.kind === 'files') { renderFileReader(data); return; }
   for (const button of document.querySelectorAll('.result')) {
     const active = button.dataset.id === id;
     button.classList.toggle('active', active); button.setAttribute('aria-current', active ? 'true' : 'false');
@@ -231,7 +239,7 @@ function sourcePage(page, current, selected) {
   else passage.textContent = page.text;
   wrapper.append(passage); return wrapper;
 }
-$('#book').addEventListener('change', chapters);
+$('#book').addEventListener('change', () => { chapters(); activeBookId = $('#book').value; });
 $('#reader-layout').addEventListener('click', () => {
   const stacked = document.body.classList.toggle('stacked-readers');
   $('#reader-layout').textContent = stacked ? '改为左右' : '改为上下';

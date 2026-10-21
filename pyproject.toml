@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "book-source-finder"
-version = "0.1.0"
+version = "0.2.0"
 description = "Find original passages from Chinese translations, locally."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["pypdf>=6,<7"]
 
 [project.scripts]
 book-source-finder = "source_finder.__main__:main"

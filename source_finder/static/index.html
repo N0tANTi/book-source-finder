@@ -3,31 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>原文查找 · 从译文回到原文</title>
+  <title>对照书库 · 原文与译文一起读</title>
   <meta name="description" content="粘贴中文译文，查找对应原文、章节与页码。书籍保存在本机。">
   <link rel="stylesheet" href="/style.css">
+  <script src="/library.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <header class="topbar"><a href="/" class="brand">原文查找<span>从译文回到原文</span></a><span class="local-note">书籍保存在本机</span></header>
+  <header class="topbar"><a href="/" class="brand">对照书库<span>原文与译文一起读</span></a><nav class="top-actions" aria-label="书库操作"><button type="button" class="small-button" id="home-button">我的书库</button><button type="button" class="small-button" id="settings-button">模型设置</button><button type="button" id="add-book-button">添加书籍</button></nav></header>
   <main>
-    <section class="search-section" aria-labelledby="search-title">
-      <div class="intro"><h1 id="search-title">读到这里，<br>原文怎么说？</h1><p>粘贴中文中的一句话或一段文字，找到它的原文出处。</p><p id="library-status" class="quiet" role="status">正在读取书库…</p></div>
+    <section id="shelf" aria-labelledby="shelf-title"><div class="shelf-heading"><div><h1 id="shelf-title">我的书库</h1><p>把原文和译文放在一起，从任何一句话回到原文。</p><p id="library-status" class="quiet" role="status">正在读取书库…</p></div><label class="shelf-filter">查找书籍<input id="shelf-filter" type="search" placeholder="输入书名"></label></div><div id="model-banner" class="model-banner"></div><div id="book-grid" class="book-grid"></div><div id="shelf-empty" class="empty-library" hidden><h2>先放进第一本书</h2><p>准备一份原文和一份中文译文，支持 EPUB、PDF、Markdown 和 TXT。</p><button type="button" id="first-book-button">添加第一本书</button></div><p class="library-note">文件保存在本机。EPUB 自动读取章节；PDF 保留文档页码。扫描 PDF 需先 OCR。</p></section>
+    <section class="search-section" aria-labelledby="search-title" hidden>
+      <div class="intro"><button type="button" id="back-to-shelf" class="small-button">← 返回书库</button><h1 id="search-title">对照阅读</h1><p id="active-book-note">选择一句中文，查找对应原文。</p></div>
       <form id="search-form">
         <div class="filters"><label>书籍<select id="book"><option value="">全部书籍</option></select></label><label>章节<select id="chapter"><option value="">全部章节</option></select></label></div>
         <label for="query" class="sr-only">要查找的中文译文</label>
         <textarea id="query" rows="4" maxlength="9000" placeholder="粘贴从译文中复制的原句，也可以输入几个关键词。" required></textarea>
-        <div class="form-bottom"><span class="quiet">支持原句、关键词和标点差异</span><button type="submit" id="search-button">查找原文 <span aria-hidden="true">↗</span></button></div>
+        <div class="form-bottom"><label class="search-mode-label">查找方式<select id="search-mode"><option value="text">原句 / 词语</option><option value="semantic">按意思查找（模型）</option></select></label><button type="submit" id="search-button">查找原文 <span aria-hidden="true">↗</span></button></div><p id="query-disclosure" class="quiet" hidden>按意思查询会将输入的文字发送到 Cloudflare。</p>
       </form>
     </section>
-    <section id="empty" class="empty-state"><h2>从一句中文开始</h2><p>已核对的段落显示对应原文；其余段落先定位到原书页，可继续查看前后页。</p><div id="examples"></div><p class="quiet">当前按文字查找。只记得大意时，试试其中几个关键词。</p></section>
+    <section id="empty" class="empty-state" hidden><h2>在这本书里查找</h2><p>输入中文原句或词语；建立模型索引后，也可以描述大意。</p><div id="examples"></div></section>
     <section id="results-section" hidden aria-labelledby="results-title">
       <div class="section-heading"><h2 id="results-title">查找结果</h2><div class="reading-controls"><span id="result-count" class="quiet" role="status"></span><button type="button" id="reader-layout" class="small-button" aria-pressed="false">改为上下</button><button type="button" id="expand-reader" class="small-button">展开阅读</button></div></div>
       <div class="workspace"><nav id="results" aria-label="匹配段落"></nav><article id="detail" aria-live="polite"></article></div>
     </section>
     <p id="error" class="error" role="alert" hidden></p>
-    <footer><span>原文保留摘录中的措辞、断词与识别误差。引用前可按页码核对原书。</span><a href="/api/export" download="alignments.json">导出已确认的对应关系</a></footer>
+    <footer><span>个人本地书库 · 模型候选需要结合上下文核对。</span><span>原文、译文与索引保存在本机</span></footer>
   </main>
+  <dialog id="import-dialog"><form id="import-form"><div class="dialog-heading"><h2>添加一本书</h2><button type="button" class="small-button close-dialog">关闭</button></div><p class="dialog-description">为同一本书放入原文和中文译文。文字提取在本机完成。</p><label class="field-label">书名<input id="import-title" name="title" type="text" maxlength="200" placeholder="可留空，使用译文文件名"></label><div class="file-pair"><label class="file-slot" id="source-drop"><strong>原文</strong><span>PDF / EPUB / Markdown / TXT</span><input type="file" id="source-file" name="source" accept=".pdf,.epub,.md,.txt" required><span class="chosen-file" id="source-filename">点击选择，或把文件拖到这里</span></label><label class="file-slot" id="translation-drop"><strong>中文译文</strong><span>PDF / EPUB / Markdown / TXT</span><input type="file" id="translation-file" name="translation" accept=".epub,.pdf,.md,.txt" required><span class="chosen-file" id="translation-filename">点击选择，或把文件拖到这里</span></label></div><p class="quiet">每份文件最多 80 MB。扫描 PDF 或加密电子书需要先转换为可读取的版本。</p><p id="import-status" role="status"></p><p id="import-error" class="error" role="alert" hidden></p><div class="dialog-actions"><button id="import-submit" type="submit">导入书库</button></div></form></dialog>
+  <dialog id="settings-dialog"><form id="settings-form"><div class="dialog-heading"><h2>模型设置</h2><button type="button" class="small-button close-dialog">关闭</button></div><p class="dialog-description">使用 Cloudflare Workers AI 的多语言向量模型，辅助查找含义相近的译文和原文候选。</p><p class="quiet">模型：BGE-M3 · 文件和索引保存在本机。建立索引时发送书籍文字片段；按意思查询时发送查询文字。</p><label class="field-label">Account ID<input id="account-id" type="text" autocomplete="off" spellcheck="false" maxlength="32" required></label><label class="field-label">Workers AI API Token<input id="api-token" type="password" autocomplete="off" spellcheck="false" maxlength="500" placeholder="填写新 Token；已有配置时留空保留"></label><p id="credential-storage" class="quiet"></p><p class="quiet">注册或登录 Cloudflare，在 Workers AI → Use REST API 中取得 Account ID 和 API Token。<a href="https://developers.cloudflare.com/workers-ai/get-started/rest-api/" target="_blank" rel="noreferrer">查看官方步骤</a></p><p id="settings-status" role="status"></p><p id="settings-error" class="error" role="alert" hidden></p><div class="dialog-actions"><button type="submit" id="settings-save">保存设置</button><button type="button" class="small-button" id="test-model">测试连接</button></div></form></dialog>
+  <dialog id="index-dialog"><div class="dialog-heading"><h2>建立语义索引</h2><button type="button" class="small-button close-dialog">关闭</button></div><p id="index-book-name"></p><p>会把这本书的原文和译文文字片段发送到 Cloudflare，计算用于匹配含义的向量。文件和得到的索引仍保存在本机。</p><p class="quiet">会消耗 Workers AI 额度。完成的进度会保留，额度受限或中断后可继续。模型找到的原文将标为候选，需结合上下文核对。</p><p id="index-error" class="error" role="alert" hidden></p><div class="dialog-actions"><button type="button" id="index-confirm">发送文字并建立索引</button></div></dialog>
   <div id="toast" role="status" hidden></div>
 </body>
 </html>

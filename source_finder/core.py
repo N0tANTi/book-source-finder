@@ -126,6 +126,8 @@ def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS paragraph_order ON paragraphs(chapter_id, position);
         CREATE INDEX IF NOT EXISTS page_order ON pages(chapter_id, position);
     ''')
+    from .documents import init_schema
+    init_schema(conn)
     return conn
 
 
@@ -219,7 +221,7 @@ def import_workspace(conn: sqlite3.Connection, root: Path) -> list[dict]:
 
 def library(conn: sqlite3.Connection) -> dict:
     books = []
-    for book in conn.execute('SELECT * FROM books ORDER BY title'):
+    for book in conn.execute('SELECT * FROM books WHERE NOT EXISTS(SELECT 1 FROM documents d WHERE d.book_id=books.id) ORDER BY title'):
         item = dict(book)
         item['chapters'] = [dict(row) for row in conn.execute('''
             SELECT c.id,c.title,COUNT(p.id) paragraph_count,COUNT(a.paragraph_id) verified_count
